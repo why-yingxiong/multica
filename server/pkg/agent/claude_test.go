@@ -1301,6 +1301,212 @@ func TestCopyFileRoundTrip(t *testing.T) {
 	}
 }
 
+// TestMirrorHostClaudeJSONIfMissing_DefaultLayoutMirrorsParentFile covers
+// the MUL-2661 regression: Claude Code's default layout stores `.claude.json`
+// at `$HOME/.claude.json`, a sibling of `~/.claude/`. The isolation mirror
+// must pull that file into the scratch dir or the CLI exits with
+// `Not logged in · Please run /login` on the first turn after the operator
+// opts into `ignore` mode.
+func TestMirrorHostClaudeJSONIfMissing_DefaultLayoutMirrorsParentFile(t *testing.T) {
+	t.Parallel()
+
+	fakeHome := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(fakeHome, ".claude"), 0o755); err != nil {
+		t.Fatalf("seed fake ~/.claude: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(fakeHome, ".claude.json"), []byte(`{"loggedIn":true}`), 0o600); err != nil {
+		t.Fatalf("seed fake $HOME/.claude.json: %v", err)
+	}
+	dest := t.TempDir()
+
+	homeDir := func() (string, error) { return fakeHome, nil }
+	if err := mirrorHostClaudeJSONIfMissingWith(filepath.Join(fakeHome, ".claude"), dest, homeDir, os.Symlink); err != nil {
+		t.Fatalf("mirror: %v", err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(dest, ".claude.json"))
+	if err != nil {
+		t.Fatalf("read mirrored .claude.json: %v", err)
+	}
+	if string(got) != `{"loggedIn":true}` {
+		t.Fatalf("mirrored content drifted, got %q", got)
+	}
+}
+
+// TestMirrorHostClaudeJSONIfMissing_AlreadyPresentNoop documents that a
+// `.claude.json` already in destDir (mirrored from inside a custom
+// CLAUDE_CONFIG_DIR by the main mirror loop) wins over the parent-level
+// `$HOME/.claude.json`. Re-linking would silently overwrite the
+// operator-pinned credentials with the default-account ones.
+func TestMirrorHostClaudeJSONIfMissing_AlreadyPresentNoop(t *testing.T) {
+	t.Parallel()
+
+	fakeHome := t.TempDir()
+	if err := os.WriteFile(filepath.Join(fakeHome, ".claude.json"), []byte(`{"loggedIn":"home"}`), 0o600); err != nil {
+		t.Fatalf("seed home .claude.json: %v", err)
+	}
+	dest := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dest, ".claude.json"), []byte(`{"loggedIn":"custom"}`), 0o600); err != nil {
+		t.Fatalf("seed existing dest .claude.json: %v", err)
+	}
+
+	called := false
+	fileLink := func(src, dst string) error {
+		called = true
+		return nil
+	}
+	homeDir := func() (string, error) { return fakeHome, nil }
+	if err := mirrorHostClaudeJSONIfMissingWith(filepath.Join(fakeHome, ".claude"), dest, homeDir, fileLink); err != nil {
+		t.Fatalf("mirror: %v", err)
+	}
+
+	if called {
+		t.Fatal("fileLink must not be invoked when dest already has .claude.json")
+	}
+	got, _ := os.ReadFile(filepath.Join(dest, ".claude.json"))
+	if string(got) != `{"loggedIn":"custom"}` {
+		t.Fatalf("existing dest .claude.json was overwritten, got %q", got)
+	}
+}
+
+// TestMirrorHostClaudeJSONIfMissing_CustomHostDirSkipped guards the
+// operator-pinned CLAUDE_CONFIG_DIR contract. A custom dir is expected to be
+// self-contained; pulling in `$HOME/.claude.json` on top would silently merge
+// a different account's login state.
+func TestMirrorHostClaudeJSONIfMissing_CustomHostDirSkipped(t *testing.T) {
+	t.Parallel()
+
+	fakeHome := t.TempDir()
+	if err := os.WriteFile(filepath.Join(fakeHome, ".claude.json"), []byte(`{"loggedIn":"home"}`), 0o600); err != nil {
+		t.Fatalf("seed home .claude.json: %v", err)
+	}
+	customHost := t.TempDir()
+	dest := t.TempDir()
+
+	called := false
+	fileLink := func(src, dst string) error {
+		called = true
+		return nil
+	}
+	homeDir := func() (string, error) { return fakeHome, nil }
+	if err := mirrorHostClaudeJSONIfMissingWith(customHost, dest, homeDir, fileLink); err != nil {
+		t.Fatalf("mirror: %v", err)
+	}
+
+	if called {
+		t.Fatal("fileLink must not be invoked when host dir is custom (not default $HOME/.claude)")
+	}
+	if _, err := os.Lstat(filepath.Join(dest, ".claude.json")); !os.IsNotExist(err) {
+		t.Fatalf("dest .claude.json should remain absent, stat err=%v", err)
+	}
+}
+
+// TestMirrorHostClaudeJSONIfMissing_MissingSourceNoop documents that a host
+// with no `$HOME/.claude.json` (fresh install, env-var-auth-only setup) is a
+// supported state. The mirror is a no-op and the scratch dir's lack of
+// `.claude.json` is left to the CLI to handle (it will surface its own
+// "not logged in" error, but the daemon does not pretend a file exists).
+func TestMirrorHostClaudeJSONIfMissing_MissingSourceNoop(t *testing.T) {
+	t.Parallel()
+
+	fakeHome := t.TempDir()
+	dest := t.TempDir()
+
+	called := false
+	fileLink := func(src, dst string) error {
+		called = true
+		return nil
+	}
+	homeDir := func() (string, error) { return fakeHome, nil }
+	if err := mirrorHostClaudeJSONIfMissingWith(filepath.Join(fakeHome, ".claude"), dest, homeDir, fileLink); err != nil {
+		t.Fatalf("mirror: %v", err)
+	}
+
+	if called {
+		t.Fatal("fileLink must not be invoked when $HOME/.claude.json is absent")
+	}
+}
+
+// TestClaudeExecuteIsolatesProvidesClaudeJSONFromHome is the end-to-end
+// MUL-2661 regression: an agent opted into `skills_local=ignore` on a host
+// that uses Claude Code's default layout ($HOME/.claude.json sibling of
+// ~/.claude/) must still start successfully. Before the fix, the scratch
+// CLAUDE_CONFIG_DIR was missing `.claude.json` and the CLI exited with
+// `Not logged in · Please run /login` on the first turn.
+func TestClaudeExecuteIsolatesProvidesClaudeJSONFromHome(t *testing.T) {
+	// NOT parallel — t.Setenv mutates global env (HOME + CLAUDE_CONFIG_DIR).
+	if runtime.GOOS == "windows" {
+		t.Skip("shell-script fixture is POSIX-only")
+	}
+
+	// Synthesize Claude Code's default split layout under a fake $HOME:
+	//   $FAKE_HOME/.claude/         — settings, agents, plugins, etc.
+	//   $FAKE_HOME/.claude.json     — main config (login state)
+	fakeHome := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(fakeHome, ".claude"), 0o755); err != nil {
+		t.Fatalf("seed fake ~/.claude: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(fakeHome, ".claude", "settings.json"), []byte(`{}`), 0o644); err != nil {
+		t.Fatalf("seed fake settings.json: %v", err)
+	}
+	const expectedConfig = "logged-in-default-layout"
+	if err := os.WriteFile(filepath.Join(fakeHome, ".claude.json"), []byte(expectedConfig), 0o600); err != nil {
+		t.Fatalf("seed fake $HOME/.claude.json: %v", err)
+	}
+
+	t.Setenv("HOME", fakeHome)
+	// Ensure the host has no CLAUDE_CONFIG_DIR override — the regression
+	// only manifests in the default split layout.
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+
+	// Fake claude binary that echoes the .claude.json it reads from the
+	// scratch CLAUDE_CONFIG_DIR. Before the fix this echoed "MISSING"
+	// because the mirror skipped the sibling file.
+	fakePath := filepath.Join(t.TempDir(), "claude")
+	script := "#!/bin/sh\n" +
+		"cat >/dev/null\n" +
+		"cfg=$(cat \"$CLAUDE_CONFIG_DIR/.claude.json\" 2>/dev/null || echo MISSING)\n" +
+		"printf '%s\\n' \"{\\\"type\\\":\\\"system\\\",\\\"session_id\\\":\\\"sess\\\"}\"\n" +
+		"printf '%s\\n' \"{\\\"type\\\":\\\"result\\\",\\\"subtype\\\":\\\"success\\\",\\\"is_error\\\":false,\\\"session_id\\\":\\\"sess\\\",\\\"result\\\":\\\"$cfg\\\"}\"\n"
+	writeTestExecutable(t, fakePath, []byte(script))
+
+	backend, err := New("claude", Config{ExecutablePath: fakePath, Logger: slog.Default()})
+	if err != nil {
+		t.Fatalf("new claude backend: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	session, err := backend.Execute(ctx, "ignored", ExecOptions{
+		Cwd:         t.TempDir(),
+		Timeout:     5 * time.Second,
+		SkillsLocal: "ignore",
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	go func() {
+		for range session.Messages {
+		}
+	}()
+
+	select {
+	case result := <-session.Result:
+		if result.Status != "completed" {
+			t.Fatalf("expected completed, got %q (err=%q)", result.Status, result.Error)
+		}
+		got := strings.TrimSpace(result.Output)
+		if got == "MISSING" {
+			t.Fatalf("MUL-2661 regression: .claude.json was not mirrored into the isolated dir")
+		}
+		if got != expectedConfig {
+			t.Fatalf("expected $HOME/.claude.json mirrored, got %q", got)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("timeout waiting for result")
+	}
+}
+
 // TestClaudeExecuteIsolatesUsesCustomEnvSource confirms the runtime mirrors
 // from the agent's custom_env CLAUDE_CONFIG_DIR — the exact bug Elon's
 // review flagged: when an operator pins CLAUDE_CONFIG_DIR via custom_env,

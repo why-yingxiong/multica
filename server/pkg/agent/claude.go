@@ -752,6 +752,20 @@ func newIsolatedClaudeConfigDir(taskCwd, hostConfigDir string, logger *slog.Logg
 				"error", err,
 			)
 		}
+		// Claude Code's default layout (no CLAUDE_CONFIG_DIR set) stores the
+		// main config — login state, projects history, recent sessions — at
+		// `$HOME/.claude.json`, a *sibling* of `~/.claude/` rather than
+		// inside it. The mirror above only walks entries under
+		// `hostConfigDir`, so on default hosts the scratch dir never gets
+		// `.claude.json` and the CLI exits with `Claude configuration file
+		// not found … Not logged in · Please run /login` (MUL-2661).
+		if err := mirrorHostClaudeJSONIfMissing(hostConfigDir, dir); err != nil && logger != nil {
+			logger.Warn("claude: mirror host .claude.json failed",
+				"source", hostConfigDir,
+				"dest", dir,
+				"error", err,
+			)
+		}
 	}
 
 	cleanup := func() {
@@ -809,6 +823,54 @@ func mirrorHostClaudeExceptSkillsWith(
 		}
 	}
 	return firstErr
+}
+
+// mirrorHostClaudeJSONIfMissing links `$HOME/.claude.json` into destDir as
+// `.claude.json` when it is not already there. Claude Code's default layout
+// (no CLAUDE_CONFIG_DIR set) stores the main config — login state, project
+// history — at `$HOME/.claude.json`, a *sibling* of `~/.claude/`, not inside
+// it. Without this passthrough, isolating CLAUDE_CONFIG_DIR strands the CLI
+// in a dir without `.claude.json` and it bails with
+// `Claude configuration file not found … Not logged in · Please run /login`
+// (MUL-2661 regression).
+//
+// No-op when:
+//   - destDir already has `.claude.json` (mirrored from inside a custom
+//     CLAUDE_CONFIG_DIR by mirrorHostClaudeExceptSkills);
+//   - hostConfigDir is not the default `$HOME/.claude` — a custom
+//     CLAUDE_CONFIG_DIR is expected to be self-contained, and silently
+//     merging `$HOME/.claude.json` from a different account would mask
+//     credential drift;
+//   - `$HOME/.claude.json` does not exist (env-var-auth-only or fresh
+//     install).
+func mirrorHostClaudeJSONIfMissing(hostConfigDir, destDir string) error {
+	return mirrorHostClaudeJSONIfMissingWith(hostConfigDir, destDir, os.UserHomeDir, createFileLink)
+}
+
+// mirrorHostClaudeJSONIfMissingWith is the testable seam behind
+// mirrorHostClaudeJSONIfMissing. Tests inject homeDir / fileLink so they can
+// exercise the precedence rules without mutating the process environment.
+func mirrorHostClaudeJSONIfMissingWith(
+	hostConfigDir, destDir string,
+	homeDir func() (string, error),
+	fileLink func(src, dst string) error,
+) error {
+	dst := filepath.Join(destDir, ".claude.json")
+	if _, err := os.Lstat(dst); err == nil {
+		return nil
+	}
+	home, err := homeDir()
+	if err != nil || home == "" {
+		return nil
+	}
+	if hostConfigDir != filepath.Join(home, ".claude") {
+		return nil
+	}
+	src := filepath.Join(home, ".claude.json")
+	if _, err := os.Stat(src); err != nil {
+		return nil
+	}
+	return fileLink(src, dst)
 }
 
 // copyFile copies the bytes of src into dst with a fresh file. Used as the
