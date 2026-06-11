@@ -58,6 +58,8 @@ type fakeQueries struct {
 	calledClaim         int
 	calledMark          int
 	calledRelease       int
+	notifyChatSet       []db.SetLarkInstallationNotifyChatParams
+	notifyChatSetErr    error
 }
 
 // mintToken produces a deterministic, distinct token per call so
@@ -176,6 +178,14 @@ func (f *fakeQueries) MarkLarkInboundDedupProcessed(ctx context.Context, arg db.
 // while it is still in-flight.
 func (f *fakeQueries) GetWorkspace(ctx context.Context, id pgtype.UUID) (db.Workspace, error) {
 	return f.workspace, f.workspaceErr
+}
+
+func (f *fakeQueries) SetLarkInstallationNotifyChat(ctx context.Context, arg db.SetLarkInstallationNotifyChatParams) error {
+	if f.notifyChatSetErr != nil {
+		return f.notifyChatSetErr
+	}
+	f.notifyChatSet = append(f.notifyChatSet, arg)
+	return nil
 }
 
 func (f *fakeQueries) ReleaseLarkInboundDedup(ctx context.Context, arg db.ReleaseLarkInboundDedupParams) (int64, error) {

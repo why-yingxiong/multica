@@ -44,6 +44,14 @@ type APIClient interface {
 	// chrome the user doesn't want.
 	SendTextMessage(ctx context.Context, p SendTextParams) (string, error)
 
+	// SendUserTextMessage posts a plain text message directly to a
+	// user's open_id (receive_id_type=open_id) instead of a chat. The
+	// Bot must share at least one chat or contact scope with the user
+	// for Lark to deliver it. Used by the InboxNotifier's DM mode —
+	// inbox items are personal, so absent a configured notify group
+	// they go to the recipient, not into a conversation.
+	SendUserTextMessage(ctx context.Context, p SendUserTextParams) (string, error)
+
 	// SendMarkdownCard posts the agent's reply as a Lark interactive
 	// card (schema 2.0) with a single `tag: "markdown"` body element.
 	// This is the path the chat-reply router takes when the body
@@ -216,6 +224,17 @@ type SendTextParams struct {
 	Text           string
 }
 
+// SendUserTextParams is the input shape for posting a plain text
+// message to a user's open_id. Text is sent verbatim (the client
+// handles the `{"text": "..."}` envelope); Lark renders `<at
+// user_id="...">` tags inside it, which the group-notification path
+// relies on — the DM path sends plain prose.
+type SendUserTextParams struct {
+	InstallationID InstallationCredentials
+	OpenID         OpenID
+	Text           string
+}
+
 // SendMarkdownCardParams is the input shape for posting an agent
 // reply as a Lark interactive card with a markdown body element.
 // Markdown is forwarded to Lark verbatim; the client builds the
@@ -327,6 +346,11 @@ func (s *stubAPIClient) PatchInteractiveCard(ctx context.Context, p PatchCardPar
 
 func (s *stubAPIClient) SendTextMessage(ctx context.Context, p SendTextParams) (string, error) {
 	s.log.Warn("lark stub client: SendTextMessage called", "chat_id", string(p.ChatID))
+	return "", ErrAPIClientNotConfigured
+}
+
+func (s *stubAPIClient) SendUserTextMessage(ctx context.Context, p SendUserTextParams) (string, error) {
+	s.log.Warn("lark stub client: SendUserTextMessage called", "open_id", string(p.OpenID))
 	return "", ErrAPIClientNotConfigured
 }
 

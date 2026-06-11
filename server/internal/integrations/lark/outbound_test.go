@@ -82,6 +82,9 @@ type fakeAPIClient struct {
 	mdCardErr      error
 	mdCardReturn   string
 	bindingSent    []BindingPromptParams
+	userTextSent   []SendUserTextParams
+	userTextErr    error
+	userTextReturn string
 }
 
 func (f *fakeAPIClient) IsConfigured() bool { return true }
@@ -103,6 +106,12 @@ func (f *fakeAPIClient) SendTextMessage(ctx context.Context, p SendTextParams) (
 	defer f.mu.Unlock()
 	f.textSent = append(f.textSent, p)
 	return f.textSendReturn, f.textSendErr
+}
+func (f *fakeAPIClient) SendUserTextMessage(ctx context.Context, p SendUserTextParams) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.userTextSent = append(f.userTextSent, p)
+	return f.userTextReturn, f.userTextErr
 }
 func (f *fakeAPIClient) SendMarkdownCard(ctx context.Context, p SendMarkdownCardParams) (string, error) {
 	f.mu.Lock()

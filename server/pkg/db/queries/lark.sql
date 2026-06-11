@@ -114,6 +114,17 @@ UPDATE lark_installation
 SET status = $2, updated_at = now()
 WHERE id = $1;
 
+-- name: SetLarkInstallationNotifyChat :exec
+-- Configures (or clears, with NULL) the group chat that receives this
+-- installation's inbox notifications. Written by the `/notify on|off`
+-- command on the inbound path; read by the InboxNotifier on the
+-- outbound path. Focused single-column UPDATE so the command cannot
+-- touch credentials, status, or lease state.
+UPDATE lark_installation
+SET notify_chat_id = sqlc.narg('notify_chat_id'),
+    updated_at     = now()
+WHERE id = $1;
+
 -- name: AcquireLarkWSLease :one
 -- Atomically claims the WebSocket lease for an installation. The CAS
 -- predicate accepts the lease when (a) no current holder exists, (b)
@@ -186,6 +197,18 @@ RETURNING *;
 -- existence is itself the membership proof).
 SELECT * FROM lark_user_binding
 WHERE installation_id = $1 AND lark_open_id = $2;
+
+-- name: GetLarkUserBindingByUser :one
+-- Reverse lookup for the outbound notification path: given a Multica
+-- user, find their Lark open_id on a specific installation so the
+-- InboxNotifier can DM them or <at>-mention them in the notify group.
+-- A user can in principle bind more than one open_id on the same
+-- installation (re-bind from a second Lark account); the most recent
+-- binding wins.
+SELECT * FROM lark_user_binding
+WHERE installation_id = $1 AND multica_user_id = $2
+ORDER BY bound_at DESC
+LIMIT 1;
 
 -- name: ListLarkUserBindingsByInstallation :many
 SELECT * FROM lark_user_binding

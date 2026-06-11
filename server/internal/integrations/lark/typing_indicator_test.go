@@ -45,6 +45,9 @@ func (f *fakeTypingAPIClient) SendTextMessage(context.Context, SendTextParams) (
 func (f *fakeTypingAPIClient) SendMarkdownCard(context.Context, SendMarkdownCardParams) (string, error) {
 	return "", nil
 }
+func (f *fakeTypingAPIClient) SendUserTextMessage(context.Context, SendUserTextParams) (string, error) {
+	return "", nil
+}
 func (f *fakeTypingAPIClient) SendBindingPromptCard(context.Context, BindingPromptParams) error {
 	return nil
 }

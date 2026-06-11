@@ -410,6 +410,56 @@ func TestHTTPClient_SendTextMessage_HappyPath(t *testing.T) {
 	}
 }
 
+// TestHTTPClient_SendUserTextMessage_HappyPath pins the wire shape of
+// the open_id-targeted DM: same /im/v1/messages POST as a chat text
+// message, but receive_id_type=open_id and receive_id is the user's
+// open_id. This is the InboxNotifier's DM-mode transport.
+func TestHTTPClient_SendUserTextMessage_HappyPath(t *testing.T) {
+	fake := newLarkFake(t)
+	fake.stubToken("tok_dm", 7200)
+	fake.stubSend(
+		map[string]any{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]string{"message_id": "om_dm_1"},
+		},
+		func(r *http.Request, body map[string]string) {
+			if r.URL.Path != "/open-apis/im/v1/messages" {
+				t.Errorf("path: got %q want /open-apis/im/v1/messages", r.URL.Path)
+			}
+			if got := r.URL.Query().Get("receive_id_type"); got != "open_id" {
+				t.Errorf("receive_id_type: got %q want open_id", got)
+			}
+			if body["receive_id"] != "ou_recipient_7" {
+				t.Errorf("receive_id: got %q want ou_recipient_7", body["receive_id"])
+			}
+			if body["msg_type"] != "text" {
+				t.Errorf("msg_type: got %q want text", body["msg_type"])
+			}
+			var inner map[string]string
+			if err := json.Unmarshal([]byte(body["content"]), &inner); err != nil {
+				t.Fatalf("content is not valid inner JSON: %v (raw=%q)", err, body["content"])
+			}
+			if inner["text"] != "你有一条新通知" {
+				t.Errorf("inner content.text: got %q want 你有一条新通知", inner["text"])
+			}
+		},
+	)
+
+	c := newTestClient(fake, time.Now)
+	msgID, err := c.SendUserTextMessage(context.Background(), SendUserTextParams{
+		InstallationID: testCreds(),
+		OpenID:         OpenID("ou_recipient_7"),
+		Text:           "你有一条新通知",
+	})
+	if err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if msgID != "om_dm_1" {
+		t.Errorf("message id: got %q want om_dm_1", msgID)
+	}
+}
+
 // TestHTTPClient_SendMarkdownCard_HappyPath pins the wire shape of the
 // schema-2.0 card we send for markdown chat replies. The MUST-haves:
 // msg_type=interactive (not text), content is a JSON-encoded card

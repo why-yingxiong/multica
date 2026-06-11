@@ -224,6 +224,18 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				patcher := lark.NewPatcher(queries, installSvc, larkClient, lark.PatcherConfig{})
 				patcher.Register(bus)
 
+				// Inbox → Lark bridge: forwards each inbox item (the
+				// in-app notification feed) to Lark — into the
+				// workspace's notification group when one is configured
+				// via `/notify on`, otherwise as a DM to the bound
+				// recipient. Best-effort like the patcher; the inbox
+				// item itself is already durable.
+				inboxNotifier := lark.NewInboxNotifier(queries, installSvc, larkClient, lark.InboxNotifierConfig{
+					PublicURL: signupConfig.PublicURL,
+					Logger:    slog.Default(),
+				})
+				inboxNotifier.Register(bus)
+
 				// Typing indicator: shows a "processing" reaction on the user's
 				// message while the agent is working, then removes it before the
 				// reply is sent. Best-effort; failures are logged only.

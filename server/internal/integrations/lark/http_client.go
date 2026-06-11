@@ -320,6 +320,53 @@ func (c *httpAPIClient) SendTextMessage(ctx context.Context, p SendTextParams) (
 	return resp.Data.MessageID, nil
 }
 
+// SendUserTextMessage posts a plain text IM message directly to a
+// user's open_id. Same wire shape as SendTextMessage except
+// receive_id_type=open_id — Lark routes it into the user's p2p chat
+// with the Bot, creating that chat if it doesn't exist yet. The
+// InboxNotifier's DM mode is the only caller today.
+func (c *httpAPIClient) SendUserTextMessage(ctx context.Context, p SendUserTextParams) (string, error) {
+	if p.OpenID == "" {
+		return "", errors.New("lark http client: missing open_id")
+	}
+	if p.Text == "" {
+		return "", errors.New("lark http client: missing text")
+	}
+	token, err := c.tenantAccessToken(ctx, p.InstallationID)
+	if err != nil {
+		return "", err
+	}
+	contentBytes, err := json.Marshal(map[string]string{"text": p.Text})
+	if err != nil {
+		return "", fmt.Errorf("lark http client: encode text content: %w", err)
+	}
+	q := url.Values{}
+	q.Set("receive_id_type", "open_id")
+	body := map[string]string{
+		"receive_id": string(p.OpenID),
+		"msg_type":   "text",
+		"content":    string(contentBytes),
+	}
+	var resp struct {
+		Code int    `json:"code"`
+		Msg  string `json:"msg"`
+		Data struct {
+			MessageID string `json:"message_id"`
+		} `json:"data"`
+	}
+	path := "/open-apis/im/v1/messages?" + q.Encode()
+	if err := c.doJSON(ctx, c.resolveBaseURL(p.InstallationID), http.MethodPost, path, token, body, &resp); err != nil {
+		return "", fmt.Errorf("lark http client: send user text message: %w", err)
+	}
+	if resp.Code != 0 || resp.Data.MessageID == "" {
+		if isTokenError(resp.Code) {
+			c.invalidateToken(p.InstallationID.AppID)
+		}
+		return "", fmt.Errorf("lark http client: send user text message: code=%d msg=%q", resp.Code, resp.Msg)
+	}
+	return resp.Data.MessageID, nil
+}
+
 // SendMarkdownCard posts the agent's reply as an interactive card
 // using Lark's schema-2.0 envelope with a single `tag: "markdown"`
 // body element. Lark's client renders the markdown into formatted

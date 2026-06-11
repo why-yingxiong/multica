@@ -54,6 +54,10 @@ func (s *stubAPIClientWithRecorder) SendTextMessage(ctx context.Context, p SendT
 	return "lark-text-msg-id", nil
 }
 
+func (s *stubAPIClientWithRecorder) SendUserTextMessage(ctx context.Context, p SendUserTextParams) (string, error) {
+	return "", nil
+}
+
 func (s *stubAPIClientWithRecorder) SendMarkdownCard(ctx context.Context, p SendMarkdownCardParams) (string, error) {
 	return "lark-md-msg-id", nil
 }
@@ -343,6 +347,58 @@ func TestLarkOutcomeReplierIssueCreatedSendsConfirmation(t *testing.T) {
 	// plain text, matching how chat replies render.
 	if len(stub.interactiveOut) != 0 {
 		t.Errorf("issue-created confirmation must not send a card; got %d cards", len(stub.interactiveOut))
+	}
+}
+
+// TestLarkOutcomeReplierNotifyCommandSendsConfirmation pins the
+// /notify feedback path: each verdict answers with its own plain-text
+// copy into the chat the command came from, no card.
+func TestLarkOutcomeReplierNotifyCommandSendsConfirmation(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		result NotifyCommandResult
+		want   string
+	}{
+		{NotifyResultEnabled, notifyCommandCopy[NotifyResultEnabled]},
+		{NotifyResultDisabled, notifyCommandCopy[NotifyResultDisabled]},
+		{NotifyResultGroupOnly, notifyCommandCopy[NotifyResultGroupOnly]},
+		{NotifyResultHelp, notifyCommandCopy[NotifyResultHelp]},
+	} {
+		t.Run(string(tc.result), func(t *testing.T) {
+			log := slog.New(slog.NewTextHandler(io.Discard, nil))
+			stub := &stubAPIClientWithRecorder{configured: true}
+			rep := NewLarkOutcomeReplier(OutcomeReplierConfig{
+				APIClient:   stub,
+				BindingSvc:  &BindingTokenService{},
+				Credentials: stubCredentialsResolver{secret: "s"},
+				Queries:     stubReplierQueries{},
+				PublicURL:   "https://multica.test",
+				Logger:      log,
+			})
+
+			inst := db.LarkInstallation{AppID: "cli_x"}
+			inst.ID = mustUUID("11111111-1111-1111-1111-111111111111")
+			msg := InboundMessage{ChatID: "oc_group_1", SenderOpenID: "ou_user"}
+			rep.Reply(context.Background(), inst, msg, DispatchResult{
+				Outcome:      OutcomeNotifyCommand,
+				NotifyResult: tc.result,
+			})
+
+			stub.mu.Lock()
+			defer stub.mu.Unlock()
+			if len(stub.textOut) != 1 {
+				t.Fatalf("expected one SendTextMessage call, got %d", len(stub.textOut))
+			}
+			if stub.textOut[0].ChatID != "oc_group_1" {
+				t.Errorf("ChatID = %q; want oc_group_1", stub.textOut[0].ChatID)
+			}
+			if stub.textOut[0].Text != tc.want {
+				t.Errorf("text = %q; want %q", stub.textOut[0].Text, tc.want)
+			}
+			if len(stub.interactiveOut) != 0 {
+				t.Errorf("notify confirmation must not send a card; got %d", len(stub.interactiveOut))
+			}
+		})
 	}
 }
 
