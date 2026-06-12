@@ -75,8 +75,13 @@ export function LarkBindPage({ token }: { token: string | null }) {
               <Button
                 size="sm"
                 onClick={() =>
+                  // `next` is the only return-to param the login page
+                  // honors (sanitizeNextUrl(searchParams.get("next"))).
+                  // This was `redirect` once — silently ignored, so a
+                  // logged-out user finished login on the workspace
+                  // home and the binding token was never redeemed.
                   navigation.push(
-                    `/login?redirect=${encodeURIComponent(
+                    `/login?next=${encodeURIComponent(
                       `/lark/bind?token=${encodeURIComponent(token ?? "")}`,
                     )}`,
                   )
