@@ -268,6 +268,33 @@ func (s *chatSessionService) AppendUserMessage(ctx context.Context, p AppendUser
 	return AppendResult{IssueCommand: cmd, DedupMarked: markedInTx}, nil
 }
 
+// AppendAgentMessage mirrors a Bot-initiated outbound notice into the
+// session transcript as an assistant message. Message-write +
+// session-touch run in one transaction, same atomicity contract as
+// AppendUserMessage; everything else (dedup, command parsing) is
+// deliberately absent — the notice was composed server-side and has
+// already been delivered to Lark.
+func (s *chatSessionService) AppendAgentMessage(ctx context.Context, sessionID pgtype.UUID, body string) error {
+	tx, err := s.txStarter.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	qtx := s.queries.WithTx(tx)
+
+	if _, err := qtx.CreateChatMessage(ctx, db.CreateChatMessageParams{
+		ChatSessionID: sessionID,
+		Role:          "assistant",
+		Content:       body,
+	}); err != nil {
+		return fmt.Errorf("create chat message: %w", err)
+	}
+	if err := qtx.TouchChatSession(ctx, sessionID); err != nil {
+		return fmt.Errorf("touch chat session: %w", err)
+	}
+	return tx.Commit(ctx)
+}
+
 // titleFromPreviousMessage extracts a sensible title from a prior
 // chat message. The spec says the previous "user message" is the
 // fallback; in practice the previous message itself might also be an

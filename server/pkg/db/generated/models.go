@@ -463,7 +463,6 @@ type LarkInstallation struct {
 	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
 	BotUnionID         pgtype.Text        `json:"bot_union_id"`
 	Region             string             `json:"region"`
-	NotifyChatID       pgtype.Text        `json:"notify_chat_id"`
 }
 
 type LarkOutboundCardMessage struct {

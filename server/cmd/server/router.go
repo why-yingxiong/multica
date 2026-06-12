@@ -31,6 +31,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/util"
 	"github.com/multica-ai/multica/server/internal/util/secretbox"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/multica-ai/multica/server/pkg/protocol"
 )
 
 var defaultOrigins = []string{
@@ -224,18 +225,6 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				patcher := lark.NewPatcher(queries, installSvc, larkClient, lark.PatcherConfig{})
 				patcher.Register(bus)
 
-				// Inbox → Lark bridge: forwards each inbox item (the
-				// in-app notification feed) to Lark — into the
-				// workspace's notification group when one is configured
-				// via `/notify on`, otherwise as a DM to the bound
-				// recipient. Best-effort like the patcher; the inbox
-				// item itself is already durable.
-				inboxNotifier := lark.NewInboxNotifier(queries, installSvc, larkClient, lark.InboxNotifierConfig{
-					PublicURL: signupConfig.PublicURL,
-					Logger:    slog.Default(),
-				})
-				inboxNotifier.Register(bus)
-
 				// Typing indicator: shows a "processing" reaction on the user's
 				// message while the agent is working, then removes it before the
 				// reply is sent. Best-effort; failures are logged only.
@@ -265,6 +254,43 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				// collapses into one agent run instead of one per message.
 				// MUL-2968.
 				dispatcher.EnableRunBatching(lark.DefaultChatRunBatchWindow)
+
+				// Assignment notice: when an AGENT creates an issue and
+				// assigns it to a member, the creating agent's Bot tells
+				// the assignee in their p2p chat, and the notice is
+				// mirrored into the chat_session transcript so it stays
+				// in the agent's conversation context. The payload type
+				// assertion mirrors notification_listeners.go — the
+				// event carries a handler.IssueResponse, which this
+				// wiring layer flattens into plain values so the lark
+				// package stays handler-free.
+				assignmentNotifier := lark.NewAssignmentNotifier(queries, installSvc, larkClient, chatSvc, lark.AssignmentNotifierConfig{
+					PublicURL: signupConfig.PublicURL,
+					Logger:    slog.Default(),
+				})
+				bus.Subscribe(protocol.EventIssueCreated, func(e events.Event) {
+					if e.ActorType != "agent" {
+						return
+					}
+					payload, ok := e.Payload.(map[string]any)
+					if !ok {
+						return
+					}
+					issue, ok := payload["issue"].(handler.IssueResponse)
+					if !ok {
+						return
+					}
+					if issue.AssigneeType == nil || *issue.AssigneeType != "member" || issue.AssigneeID == nil {
+						return
+					}
+					assignmentNotifier.NotifyAssigned(lark.IssueAssignedNotice{
+						WorkspaceID:    parseUUID(issue.WorkspaceID),
+						AgentID:        parseUUID(e.ActorID),
+						AssigneeUserID: parseUUID(*issue.AssigneeID),
+						Identifier:     issue.Identifier,
+						Title:          issue.Title,
+					})
+				})
 
 				// WS Hub: lease + supervisor goroutines per installation.
 				// The WSLongConnConnector talks Lark's long-conn protocol

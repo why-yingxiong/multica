@@ -191,53 +191,9 @@ func (r *LarkOutcomeReplier) Reply(ctx context.Context, inst db.LarkInstallation
 				)
 			}
 		}
-	case OutcomeNotifyCommand:
-		if err := r.sendNotifyCommandReply(ctx, inst, msg, res); err != nil {
-			r.log.Warn("lark outcome replier: notify command reply failed",
-				"installation_id", uuidString(inst.ID),
-				"chat_id", string(msg.ChatID),
-				"notify_result", string(res.NotifyResult),
-				"err", err.Error(),
-			)
-		}
 	case OutcomeDropped:
 		// OutcomeDropped is informational; no user-visible reply.
 	}
-}
-
-// sendNotifyCommandReply confirms a /notify command with a plain text
-// message into the chat it came from — consistent with the /issue
-// confirmation, the command's feedback flows inline with the
-// conversation rather than as a card.
-func (r *LarkOutcomeReplier) sendNotifyCommandReply(ctx context.Context, inst db.LarkInstallation, msg InboundMessage, res DispatchResult) error {
-	if msg.ChatID == "" {
-		return errors.New("missing chat_id")
-	}
-	text, ok := notifyCommandCopy[res.NotifyResult]
-	if !ok {
-		text = notifyCommandCopy[NotifyResultHelp]
-	}
-	creds, err := r.installationCredentials(inst)
-	if err != nil {
-		return err
-	}
-	if _, err := r.client.SendTextMessage(ctx, SendTextParams{
-		InstallationID: creds,
-		ChatID:         msg.ChatID,
-		Text:           text,
-	}); err != nil {
-		return fmt.Errorf("send notify command reply: %w", err)
-	}
-	return nil
-}
-
-// notifyCommandCopy is the user-visible reply per /notify verdict.
-// Chinese voice, matching the rest of the integration's copy.
-var notifyCommandCopy = map[NotifyCommandResult]string{
-	NotifyResultEnabled:   "已将本群设为收件箱通知群：工作区成员的收件箱通知会推送到这里，并 @ 对应成员。发送 /notify off 可关闭。",
-	NotifyResultDisabled:  "已关闭群通知。已绑定飞书的成员将改为私聊接收收件箱通知。",
-	NotifyResultGroupOnly: "/notify on 仅支持在群聊中使用：把机器人拉进群后，在群里发送 /notify on 即可将该群设为通知群。",
-	NotifyResultHelp:      "用法：/notify on — 将本群设为收件箱通知群；/notify off — 关闭群通知。",
 }
 
 func (r *LarkOutcomeReplier) sendBindingPrompt(ctx context.Context, inst db.LarkInstallation, res DispatchResult) error {

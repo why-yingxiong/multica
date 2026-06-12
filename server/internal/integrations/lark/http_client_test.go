@@ -421,7 +421,7 @@ func TestHTTPClient_SendUserTextMessage_HappyPath(t *testing.T) {
 		map[string]any{
 			"code": 0,
 			"msg":  "ok",
-			"data": map[string]string{"message_id": "om_dm_1"},
+			"data": map[string]string{"message_id": "om_dm_1", "chat_id": "oc_p2p_dm_1"},
 		},
 		func(r *http.Request, body map[string]string) {
 			if r.URL.Path != "/open-apis/im/v1/messages" {
@@ -447,7 +447,7 @@ func TestHTTPClient_SendUserTextMessage_HappyPath(t *testing.T) {
 	)
 
 	c := newTestClient(fake, time.Now)
-	msgID, err := c.SendUserTextMessage(context.Background(), SendUserTextParams{
+	res, err := c.SendUserTextMessage(context.Background(), SendUserTextParams{
 		InstallationID: testCreds(),
 		OpenID:         OpenID("ou_recipient_7"),
 		Text:           "你有一条新通知",
@@ -455,8 +455,15 @@ func TestHTTPClient_SendUserTextMessage_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("send: %v", err)
 	}
-	if msgID != "om_dm_1" {
-		t.Errorf("message id: got %q want om_dm_1", msgID)
+	if res.MessageID != "om_dm_1" {
+		t.Errorf("message id: got %q want om_dm_1", res.MessageID)
+	}
+	// chat_id identifies the p2p chat Lark routed the DM into — the
+	// AssignmentNotifier uses it to mirror the notice into the bound
+	// chat_session, so losing it silently would break in-context
+	// notifications.
+	if res.ChatID != "oc_p2p_dm_1" {
+		t.Errorf("chat id: got %q want oc_p2p_dm_1", res.ChatID)
 	}
 }
 

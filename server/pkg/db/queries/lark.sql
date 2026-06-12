@@ -114,17 +114,6 @@ UPDATE lark_installation
 SET status = $2, updated_at = now()
 WHERE id = $1;
 
--- name: SetLarkInstallationNotifyChat :exec
--- Configures (or clears, with NULL) the group chat that receives this
--- installation's inbox notifications. Written by the `/notify on|off`
--- command on the inbound path; read by the InboxNotifier on the
--- outbound path. Focused single-column UPDATE so the command cannot
--- touch credentials, status, or lease state.
-UPDATE lark_installation
-SET notify_chat_id = sqlc.narg('notify_chat_id'),
-    updated_at     = now()
-WHERE id = $1;
-
 -- name: AcquireLarkWSLease :one
 -- Atomically claims the WebSocket lease for an installation. The CAS
 -- predicate accepts the lease when (a) no current holder exists, (b)

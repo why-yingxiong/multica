@@ -109,30 +109,6 @@ const (
 	// unarchive or rebind"). Kept separate from OutcomeAgentOffline
 	// because the user-facing remediation differs.
 	OutcomeAgentArchived Outcome = "agent_archived"
-
-	// OutcomeNotifyCommand — the message was a `/notify …` config
-	// command. It is NOT ingested into chat_session and does NOT
-	// trigger an agent run; the installation's notify_chat_id was
-	// updated (or the command was rejected — see
-	// DispatchResult.NotifyResult) and the adapter replies with the
-	// matching confirmation copy.
-	OutcomeNotifyCommand Outcome = "notify_command"
-)
-
-// NotifyCommandResult tells the OutcomeReplier which confirmation copy
-// a /notify command earned.
-type NotifyCommandResult string
-
-const (
-	// NotifyResultEnabled — this group is now the notification group.
-	NotifyResultEnabled NotifyCommandResult = "enabled"
-	// NotifyResultDisabled — group notifications were turned off.
-	NotifyResultDisabled NotifyCommandResult = "disabled"
-	// NotifyResultGroupOnly — `/notify on` was sent outside a group
-	// chat; the setting only makes sense for groups.
-	NotifyResultGroupOnly NotifyCommandResult = "group_only"
-	// NotifyResultHelp — bare `/notify` or an unrecognized argument.
-	NotifyResultHelp NotifyCommandResult = "help"
 )
 
 // DispatchResult is the typed return from Dispatcher.Handle. Callers
@@ -162,9 +138,6 @@ type DispatchResult struct {
 	// in the confirmation message so the chat history reads naturally
 	// even when the Multica deep link is not reachable.
 	IssueTitle string
-	// NotifyResult is populated when Outcome == OutcomeNotifyCommand;
-	// it selects the confirmation copy the replier sends.
-	NotifyResult NotifyCommandResult
 }
 
 // IssueCreator is the narrow subset of service.IssueService the
@@ -219,10 +192,6 @@ type DispatcherQueries interface {
 	// emitting just the issue number — so callers handle the error
 	// inline rather than aborting the whole dispatch.
 	GetWorkspace(ctx context.Context, id pgtype.UUID) (db.Workspace, error)
-	// SetLarkInstallationNotifyChat writes (or clears, with a NULL
-	// param) the installation's inbox-notification group. Only the
-	// /notify command path calls it.
-	SetLarkInstallationNotifyChat(ctx context.Context, arg db.SetLarkInstallationNotifyChatParams) error
 }
 
 // Dispatcher is the single per-message entry point on the inbound
@@ -473,20 +442,6 @@ func (d *Dispatcher) processClaimed(ctx context.Context, msg InboundMessage, ins
 		return DispatchResult{}, finalizeRelease, fmt.Errorf("load user binding: %w", err)
 	}
 
-	// 4.5. /notify config command. Intercepted BEFORE chat-session
-	//    creation on purpose: it is workspace configuration, not
-	//    conversation — it must not land in chat history and must not
-	//    trigger an agent run. Parsed from CommandBody (the user's own
-	//    typed text; the decoder already stripped the Bot's @-mention)
-	//    with the same Body fallback AppendUserMessage uses for /issue.
-	commandSource := msg.CommandBody
-	if commandSource == "" {
-		commandSource = msg.Body
-	}
-	if action, ok := parseNotifyCommand(commandSource); ok {
-		return d.handleNotifyCommand(ctx, msg, inst, action)
-	}
-
 	// 5. Resolve the chat_session. For group chats, the session
 	//    creator is the INSTALLER (stable workspace identity that
 	//    won't cascade-delete when individual group members churn);
@@ -604,53 +559,6 @@ func (d *Dispatcher) processClaimed(ctx context.Context, msg InboundMessage, ins
 	// "latest message in a window wins" rule above. See MUL-2645.
 	d.scheduleRun(inst, msg, sessionID, binding.MulticaUserID)
 	return res, postAppendFinalize, nil
-}
-
-// handleNotifyCommand applies a parsed /notify command and returns the
-// OutcomeNotifyCommand verdict the replier turns into confirmation
-// copy. `on` binds the current GROUP chat as the installation's
-// notification group (p2p chats are rejected — a personal DM channel
-// needs no opt-in, that is the default delivery mode); `off` clears
-// the group unconditionally so an admin can disable routing from any
-// chat without hunting for the configured group.
-//
-// The config write is the durable outcome for the dedup claim: success
-// (and the no-write help / group_only verdicts) → finalizeMark; a DB
-// error before any write → finalizeRelease so the WS retry can re-run
-// the command.
-func (d *Dispatcher) handleNotifyCommand(ctx context.Context, msg InboundMessage, inst db.LarkInstallation, action NotifyAction) (DispatchResult, dedupFinalize, error) {
-	res := DispatchResult{
-		Outcome:        OutcomeNotifyCommand,
-		InstallationID: inst.ID,
-		SenderOpenID:   msg.SenderOpenID,
-	}
-	switch action {
-	case NotifyActionOn:
-		if msg.ChatType != ChatTypeGroup {
-			res.NotifyResult = NotifyResultGroupOnly
-			return res, finalizeMark, nil
-		}
-		if err := d.Queries.SetLarkInstallationNotifyChat(ctx, db.SetLarkInstallationNotifyChatParams{
-			ID:           inst.ID,
-			NotifyChatID: pgtype.Text{String: string(msg.ChatID), Valid: true},
-		}); err != nil {
-			return DispatchResult{}, finalizeRelease, fmt.Errorf("set notify chat: %w", err)
-		}
-		res.NotifyResult = NotifyResultEnabled
-		return res, finalizeMark, nil
-	case NotifyActionOff:
-		if err := d.Queries.SetLarkInstallationNotifyChat(ctx, db.SetLarkInstallationNotifyChatParams{
-			ID:           inst.ID,
-			NotifyChatID: pgtype.Text{},
-		}); err != nil {
-			return DispatchResult{}, finalizeRelease, fmt.Errorf("clear notify chat: %w", err)
-		}
-		res.NotifyResult = NotifyResultDisabled
-		return res, finalizeMark, nil
-	default:
-		res.NotifyResult = NotifyResultHelp
-		return res, finalizeMark, nil
-	}
 }
 
 // scheduleRun hands the per-session run trigger to the debouncer (or fires

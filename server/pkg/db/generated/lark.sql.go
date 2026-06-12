@@ -23,7 +23,7 @@ WHERE id = $3
         OR ws_lease_expires_at < now()
         OR ws_lease_token = $1
   )
-RETURNING id, workspace_id, agent_id, app_id, app_secret_encrypted, tenant_key, bot_open_id, installer_user_id, status, ws_lease_token, ws_lease_expires_at, installed_at, created_at, updated_at, bot_union_id, region, notify_chat_id
+RETURNING id, workspace_id, agent_id, app_id, app_secret_encrypted, tenant_key, bot_open_id, installer_user_id, status, ws_lease_token, ws_lease_expires_at, installed_at, created_at, updated_at, bot_union_id, region
 `
 
 type AcquireLarkWSLeaseParams struct {
@@ -57,7 +57,6 @@ func (q *Queries) AcquireLarkWSLease(ctx context.Context, arg AcquireLarkWSLease
 		&i.UpdatedAt,
 		&i.BotUnionID,
 		&i.Region,
-		&i.NotifyChatID,
 	)
 	return i, err
 }
@@ -275,7 +274,7 @@ INSERT INTO lark_installation (
 ) VALUES (
     $1, $2, $3, $4, $7, $5, $8, $6
 )
-RETURNING id, workspace_id, agent_id, app_id, app_secret_encrypted, tenant_key, bot_open_id, installer_user_id, status, ws_lease_token, ws_lease_expires_at, installed_at, created_at, updated_at, bot_union_id, region, notify_chat_id
+RETURNING id, workspace_id, agent_id, app_id, app_secret_encrypted, tenant_key, bot_open_id, installer_user_id, status, ws_lease_token, ws_lease_expires_at, installed_at, created_at, updated_at, bot_union_id, region
 `
 
 type CreateLarkInstallationParams struct {
@@ -336,7 +335,6 @@ func (q *Queries) CreateLarkInstallation(ctx context.Context, arg CreateLarkInst
 		&i.UpdatedAt,
 		&i.BotUnionID,
 		&i.Region,
-		&i.NotifyChatID,
 	)
 	return i, err
 }
@@ -510,7 +508,7 @@ func (q *Queries) GetLarkChatSessionBindingBySession(ctx context.Context, chatSe
 }
 
 const getLarkInstallation = `-- name: GetLarkInstallation :one
-SELECT id, workspace_id, agent_id, app_id, app_secret_encrypted, tenant_key, bot_open_id, installer_user_id, status, ws_lease_token, ws_lease_expires_at, installed_at, created_at, updated_at, bot_union_id, region, notify_chat_id FROM lark_installation WHERE id = $1
+SELECT id, workspace_id, agent_id, app_id, app_secret_encrypted, tenant_key, bot_open_id, installer_user_id, status, ws_lease_token, ws_lease_expires_at, installed_at, created_at, updated_at, bot_union_id, region FROM lark_installation WHERE id = $1
 `
 
 func (q *Queries) GetLarkInstallation(ctx context.Context, id pgtype.UUID) (LarkInstallation, error) {
@@ -533,13 +531,12 @@ func (q *Queries) GetLarkInstallation(ctx context.Context, id pgtype.UUID) (Lark
 		&i.UpdatedAt,
 		&i.BotUnionID,
 		&i.Region,
-		&i.NotifyChatID,
 	)
 	return i, err
 }
 
 const getLarkInstallationByAgent = `-- name: GetLarkInstallationByAgent :one
-SELECT id, workspace_id, agent_id, app_id, app_secret_encrypted, tenant_key, bot_open_id, installer_user_id, status, ws_lease_token, ws_lease_expires_at, installed_at, created_at, updated_at, bot_union_id, region, notify_chat_id FROM lark_installation
+SELECT id, workspace_id, agent_id, app_id, app_secret_encrypted, tenant_key, bot_open_id, installer_user_id, status, ws_lease_token, ws_lease_expires_at, installed_at, created_at, updated_at, bot_union_id, region FROM lark_installation
 WHERE workspace_id = $1 AND agent_id = $2
 `
 
@@ -568,13 +565,12 @@ func (q *Queries) GetLarkInstallationByAgent(ctx context.Context, arg GetLarkIns
 		&i.UpdatedAt,
 		&i.BotUnionID,
 		&i.Region,
-		&i.NotifyChatID,
 	)
 	return i, err
 }
 
 const getLarkInstallationByAppID = `-- name: GetLarkInstallationByAppID :one
-SELECT id, workspace_id, agent_id, app_id, app_secret_encrypted, tenant_key, bot_open_id, installer_user_id, status, ws_lease_token, ws_lease_expires_at, installed_at, created_at, updated_at, bot_union_id, region, notify_chat_id FROM lark_installation WHERE app_id = $1
+SELECT id, workspace_id, agent_id, app_id, app_secret_encrypted, tenant_key, bot_open_id, installer_user_id, status, ws_lease_token, ws_lease_expires_at, installed_at, created_at, updated_at, bot_union_id, region FROM lark_installation WHERE app_id = $1
 `
 
 // Used by the OAuth callback to detect re-install vs first-install,
@@ -600,13 +596,12 @@ func (q *Queries) GetLarkInstallationByAppID(ctx context.Context, appID string) 
 		&i.UpdatedAt,
 		&i.BotUnionID,
 		&i.Region,
-		&i.NotifyChatID,
 	)
 	return i, err
 }
 
 const getLarkInstallationInWorkspace = `-- name: GetLarkInstallationInWorkspace :one
-SELECT id, workspace_id, agent_id, app_id, app_secret_encrypted, tenant_key, bot_open_id, installer_user_id, status, ws_lease_token, ws_lease_expires_at, installed_at, created_at, updated_at, bot_union_id, region, notify_chat_id FROM lark_installation
+SELECT id, workspace_id, agent_id, app_id, app_secret_encrypted, tenant_key, bot_open_id, installer_user_id, status, ws_lease_token, ws_lease_expires_at, installed_at, created_at, updated_at, bot_union_id, region FROM lark_installation
 WHERE id = $1 AND workspace_id = $2
 `
 
@@ -635,7 +630,6 @@ func (q *Queries) GetLarkInstallationInWorkspace(ctx context.Context, arg GetLar
 		&i.UpdatedAt,
 		&i.BotUnionID,
 		&i.Region,
-		&i.NotifyChatID,
 	)
 	return i, err
 }
@@ -727,7 +721,7 @@ func (q *Queries) GetLarkUserBindingByUser(ctx context.Context, arg GetLarkUserB
 }
 
 const listActiveLarkInstallations = `-- name: ListActiveLarkInstallations :many
-SELECT id, workspace_id, agent_id, app_id, app_secret_encrypted, tenant_key, bot_open_id, installer_user_id, status, ws_lease_token, ws_lease_expires_at, installed_at, created_at, updated_at, bot_union_id, region, notify_chat_id FROM lark_installation
+SELECT id, workspace_id, agent_id, app_id, app_secret_encrypted, tenant_key, bot_open_id, installer_user_id, status, ws_lease_token, ws_lease_expires_at, installed_at, created_at, updated_at, bot_union_id, region FROM lark_installation
 WHERE status = 'active'
 ORDER BY created_at ASC
 `
@@ -761,7 +755,6 @@ func (q *Queries) ListActiveLarkInstallations(ctx context.Context) ([]LarkInstal
 			&i.UpdatedAt,
 			&i.BotUnionID,
 			&i.Region,
-			&i.NotifyChatID,
 		); err != nil {
 			return nil, err
 		}
@@ -817,7 +810,7 @@ func (q *Queries) ListLarkInboundAuditByInstallation(ctx context.Context, arg Li
 }
 
 const listLarkInstallationsByWorkspace = `-- name: ListLarkInstallationsByWorkspace :many
-SELECT id, workspace_id, agent_id, app_id, app_secret_encrypted, tenant_key, bot_open_id, installer_user_id, status, ws_lease_token, ws_lease_expires_at, installed_at, created_at, updated_at, bot_union_id, region, notify_chat_id FROM lark_installation
+SELECT id, workspace_id, agent_id, app_id, app_secret_encrypted, tenant_key, bot_open_id, installer_user_id, status, ws_lease_token, ws_lease_expires_at, installed_at, created_at, updated_at, bot_union_id, region FROM lark_installation
 WHERE workspace_id = $1
 ORDER BY created_at ASC
 `
@@ -848,7 +841,6 @@ func (q *Queries) ListLarkInstallationsByWorkspace(ctx context.Context, workspac
 			&i.UpdatedAt,
 			&i.BotUnionID,
 			&i.Region,
-			&i.NotifyChatID,
 		); err != nil {
 			return nil, err
 		}
@@ -1078,28 +1070,6 @@ func (q *Queries) SetLarkInstallationBotUnionID(ctx context.Context, arg SetLark
 	return err
 }
 
-const setLarkInstallationNotifyChat = `-- name: SetLarkInstallationNotifyChat :exec
-UPDATE lark_installation
-SET notify_chat_id = $2,
-    updated_at     = now()
-WHERE id = $1
-`
-
-type SetLarkInstallationNotifyChatParams struct {
-	ID           pgtype.UUID `json:"id"`
-	NotifyChatID pgtype.Text `json:"notify_chat_id"`
-}
-
-// Configures (or clears, with NULL) the group chat that receives this
-// installation's inbox notifications. Written by the `/notify on|off`
-// command on the inbound path; read by the InboxNotifier on the
-// outbound path. Focused single-column UPDATE so the command cannot
-// touch credentials, status, or lease state.
-func (q *Queries) SetLarkInstallationNotifyChat(ctx context.Context, arg SetLarkInstallationNotifyChatParams) error {
-	_, err := q.db.Exec(ctx, setLarkInstallationNotifyChat, arg.ID, arg.NotifyChatID)
-	return err
-}
-
 const setLarkInstallationStatus = `-- name: SetLarkInstallationStatus :exec
 UPDATE lark_installation
 SET status = $2, updated_at = now()
@@ -1151,7 +1121,7 @@ ON CONFLICT (workspace_id, agent_id) DO UPDATE SET
     status               = 'active',
     installed_at         = now(),
     updated_at           = now()
-RETURNING id, workspace_id, agent_id, app_id, app_secret_encrypted, tenant_key, bot_open_id, installer_user_id, status, ws_lease_token, ws_lease_expires_at, installed_at, created_at, updated_at, bot_union_id, region, notify_chat_id
+RETURNING id, workspace_id, agent_id, app_id, app_secret_encrypted, tenant_key, bot_open_id, installer_user_id, status, ws_lease_token, ws_lease_expires_at, installed_at, created_at, updated_at, bot_union_id, region
 `
 
 type UpsertLarkInstallationParams struct {
@@ -1202,7 +1172,6 @@ func (q *Queries) UpsertLarkInstallation(ctx context.Context, arg UpsertLarkInst
 		&i.UpdatedAt,
 		&i.BotUnionID,
 		&i.Region,
-		&i.NotifyChatID,
 	)
 	return i, err
 }

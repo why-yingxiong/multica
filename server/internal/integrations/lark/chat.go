@@ -42,6 +42,14 @@ type ChatSessionService interface {
 	// with `/issue`) returns the parsed command so the caller can
 	// dispatch through service.IssueService.Create.
 	AppendUserMessage(ctx context.Context, p AppendUserMessageParams) (AppendResult, error)
+
+	// AppendAgentMessage records a Bot-initiated outbound notice (e.g.
+	// the issue-assignment notice) as an assistant message in the
+	// session history, so the agent sees its own notifications in
+	// context on the next run. No dedup, no command parsing — the
+	// caller has already delivered the message to Lark and is mirroring
+	// it into the transcript.
+	AppendAgentMessage(ctx context.Context, sessionID pgtype.UUID, body string) error
 }
 
 // EnsureChatSessionParams carries the inputs for ChatSessionService.EnsureChatSession.

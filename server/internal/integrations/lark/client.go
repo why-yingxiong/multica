@@ -45,12 +45,14 @@ type APIClient interface {
 	SendTextMessage(ctx context.Context, p SendTextParams) (string, error)
 
 	// SendUserTextMessage posts a plain text message directly to a
-	// user's open_id (receive_id_type=open_id) instead of a chat. The
-	// Bot must share at least one chat or contact scope with the user
-	// for Lark to deliver it. Used by the InboxNotifier's DM mode —
-	// inbox items are personal, so absent a configured notify group
-	// they go to the recipient, not into a conversation.
-	SendUserTextMessage(ctx context.Context, p SendUserTextParams) (string, error)
+	// user's open_id (receive_id_type=open_id) instead of a chat —
+	// Lark routes it into the user's p2p chat with the Bot, creating
+	// that chat on first contact. The returned ChatID identifies that
+	// p2p chat so the caller can bind/append the message to the
+	// corresponding Multica chat_session — that is what keeps
+	// Bot-initiated notices inside the agent's conversation context.
+	// Used by the AssignmentNotifier.
+	SendUserTextMessage(ctx context.Context, p SendUserTextParams) (SendUserTextResult, error)
 
 	// SendMarkdownCard posts the agent's reply as a Lark interactive
 	// card (schema 2.0) with a single `tag: "markdown"` body element.
@@ -226,13 +228,20 @@ type SendTextParams struct {
 
 // SendUserTextParams is the input shape for posting a plain text
 // message to a user's open_id. Text is sent verbatim (the client
-// handles the `{"text": "..."}` envelope); Lark renders `<at
-// user_id="...">` tags inside it, which the group-notification path
-// relies on — the DM path sends plain prose.
+// handles the `{"text": "..."}` envelope).
 type SendUserTextParams struct {
 	InstallationID InstallationCredentials
 	OpenID         OpenID
 	Text           string
+}
+
+// SendUserTextResult is what Lark reports back for an open_id-targeted
+// send. ChatID is the p2p chat the message landed in — the key the
+// caller needs to find (or create) the lark_chat_session_binding so
+// the sent notice also lands in the Multica-side conversation history.
+type SendUserTextResult struct {
+	MessageID string
+	ChatID    ChatID
 }
 
 // SendMarkdownCardParams is the input shape for posting an agent
@@ -349,9 +358,9 @@ func (s *stubAPIClient) SendTextMessage(ctx context.Context, p SendTextParams) (
 	return "", ErrAPIClientNotConfigured
 }
 
-func (s *stubAPIClient) SendUserTextMessage(ctx context.Context, p SendUserTextParams) (string, error) {
+func (s *stubAPIClient) SendUserTextMessage(ctx context.Context, p SendUserTextParams) (SendUserTextResult, error) {
 	s.log.Warn("lark stub client: SendUserTextMessage called", "open_id", string(p.OpenID))
-	return "", ErrAPIClientNotConfigured
+	return SendUserTextResult{}, ErrAPIClientNotConfigured
 }
 
 func (s *stubAPIClient) SendMarkdownCard(ctx context.Context, p SendMarkdownCardParams) (string, error) {

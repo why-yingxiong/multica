@@ -324,21 +324,23 @@ func (c *httpAPIClient) SendTextMessage(ctx context.Context, p SendTextParams) (
 // user's open_id. Same wire shape as SendTextMessage except
 // receive_id_type=open_id — Lark routes it into the user's p2p chat
 // with the Bot, creating that chat if it doesn't exist yet. The
-// InboxNotifier's DM mode is the only caller today.
-func (c *httpAPIClient) SendUserTextMessage(ctx context.Context, p SendUserTextParams) (string, error) {
+// response's chat_id (the p2p chat the message landed in) is returned
+// so the caller can bind the message into the matching Multica
+// chat_session. The AssignmentNotifier is the only caller today.
+func (c *httpAPIClient) SendUserTextMessage(ctx context.Context, p SendUserTextParams) (SendUserTextResult, error) {
 	if p.OpenID == "" {
-		return "", errors.New("lark http client: missing open_id")
+		return SendUserTextResult{}, errors.New("lark http client: missing open_id")
 	}
 	if p.Text == "" {
-		return "", errors.New("lark http client: missing text")
+		return SendUserTextResult{}, errors.New("lark http client: missing text")
 	}
 	token, err := c.tenantAccessToken(ctx, p.InstallationID)
 	if err != nil {
-		return "", err
+		return SendUserTextResult{}, err
 	}
 	contentBytes, err := json.Marshal(map[string]string{"text": p.Text})
 	if err != nil {
-		return "", fmt.Errorf("lark http client: encode text content: %w", err)
+		return SendUserTextResult{}, fmt.Errorf("lark http client: encode text content: %w", err)
 	}
 	q := url.Values{}
 	q.Set("receive_id_type", "open_id")
@@ -352,19 +354,23 @@ func (c *httpAPIClient) SendUserTextMessage(ctx context.Context, p SendUserTextP
 		Msg  string `json:"msg"`
 		Data struct {
 			MessageID string `json:"message_id"`
+			ChatID    string `json:"chat_id"`
 		} `json:"data"`
 	}
 	path := "/open-apis/im/v1/messages?" + q.Encode()
 	if err := c.doJSON(ctx, c.resolveBaseURL(p.InstallationID), http.MethodPost, path, token, body, &resp); err != nil {
-		return "", fmt.Errorf("lark http client: send user text message: %w", err)
+		return SendUserTextResult{}, fmt.Errorf("lark http client: send user text message: %w", err)
 	}
 	if resp.Code != 0 || resp.Data.MessageID == "" {
 		if isTokenError(resp.Code) {
 			c.invalidateToken(p.InstallationID.AppID)
 		}
-		return "", fmt.Errorf("lark http client: send user text message: code=%d msg=%q", resp.Code, resp.Msg)
+		return SendUserTextResult{}, fmt.Errorf("lark http client: send user text message: code=%d msg=%q", resp.Code, resp.Msg)
 	}
-	return resp.Data.MessageID, nil
+	return SendUserTextResult{
+		MessageID: resp.Data.MessageID,
+		ChatID:    ChatID(resp.Data.ChatID),
+	}, nil
 }
 
 // SendMarkdownCard posts the agent's reply as an interactive card

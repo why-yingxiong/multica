@@ -58,8 +58,6 @@ type fakeQueries struct {
 	calledClaim         int
 	calledMark          int
 	calledRelease       int
-	notifyChatSet       []db.SetLarkInstallationNotifyChatParams
-	notifyChatSetErr    error
 }
 
 // mintToken produces a deterministic, distinct token per call so
@@ -180,14 +178,6 @@ func (f *fakeQueries) GetWorkspace(ctx context.Context, id pgtype.UUID) (db.Work
 	return f.workspace, f.workspaceErr
 }
 
-func (f *fakeQueries) SetLarkInstallationNotifyChat(ctx context.Context, arg db.SetLarkInstallationNotifyChatParams) error {
-	if f.notifyChatSetErr != nil {
-		return f.notifyChatSetErr
-	}
-	f.notifyChatSet = append(f.notifyChatSet, arg)
-	return nil
-}
-
 func (f *fakeQueries) ReleaseLarkInboundDedup(ctx context.Context, arg db.ReleaseLarkInboundDedupParams) (int64, error) {
 	f.calledRelease++
 	if f.dedup == nil {
@@ -234,6 +224,9 @@ type fakeChat struct {
 	calledAppend     int
 	lastAppendParams AppendUserMessageParams
 	lastEnsureParams EnsureChatSessionParams
+	agentMessages    []string
+	lastAgentSession pgtype.UUID
+	agentAppendErr   error
 }
 
 func (f *fakeChat) EnsureChatSession(ctx context.Context, p EnsureChatSessionParams) (pgtype.UUID, error) {
@@ -270,6 +263,12 @@ func (f *fakeChat) AppendUserMessage(ctx context.Context, p AppendUserMessagePar
 		res.DedupMarked = true
 	}
 	return res, nil
+}
+
+func (f *fakeChat) AppendAgentMessage(ctx context.Context, sessionID pgtype.UUID, body string) error {
+	f.agentMessages = append(f.agentMessages, body)
+	f.lastAgentSession = sessionID
+	return f.agentAppendErr
 }
 
 type fakeAudit struct {
