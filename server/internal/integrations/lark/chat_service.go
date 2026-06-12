@@ -269,9 +269,15 @@ func (s *chatSessionService) AppendUserMessage(ctx context.Context, p AppendUser
 }
 
 // AppendAgentMessage mirrors a Bot-initiated outbound notice into the
-// session transcript as an assistant message. Message-write +
-// session-touch run in one transaction, same atomicity contract as
-// AppendUserMessage; everything else (dedup, command parsing) is
+// session transcript with role 'notice' — NOT 'assistant'. The daemon
+// chat prompt anchors on the last assistant row and replays everything
+// after it: a notice posing as assistant would advance that anchor
+// (swallowing user messages that arrived before the notice landed) and
+// would still never reach the model, because the provider's resumed
+// session only contains text the model actually generated. As 'notice'
+// the row is re-delivered inside the next run's prompt instead.
+// Message-write + session-touch run in one transaction, same atomicity
+// contract as AppendUserMessage; dedup and command parsing are
 // deliberately absent — the notice was composed server-side and has
 // already been delivered to Lark.
 func (s *chatSessionService) AppendAgentMessage(ctx context.Context, sessionID pgtype.UUID, body string) error {
@@ -284,7 +290,7 @@ func (s *chatSessionService) AppendAgentMessage(ctx context.Context, sessionID p
 
 	if _, err := qtx.CreateChatMessage(ctx, db.CreateChatMessageParams{
 		ChatSessionID: sessionID,
-		Role:          "assistant",
+		Role:          "notice",
 		Content:       body,
 	}); err != nil {
 		return fmt.Errorf("create chat message: %w", err)

@@ -316,7 +316,7 @@ export interface IssueReactionRemovedPayload {
 export interface ChatMessageEventPayload {
   chat_session_id: string;
   message_id: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "notice";
   content: string;
   task_id?: string;
   created_at: string;

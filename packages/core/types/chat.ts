@@ -24,7 +24,12 @@ export interface PendingChatTasksResponse {
 export interface ChatMessage {
   id: string;
   chat_session_id: string;
-  role: "user" | "assistant";
+  /**
+   * "notice" rows are platform-composed Bot messages (e.g. the Lark
+   * assignment notice) mirrored into the transcript; the UI renders
+   * them like assistant messages.
+   */
+  role: "user" | "assistant" | "notice";
   content: string;
   task_id: string | null;
   created_at: string;

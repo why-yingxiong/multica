@@ -34,7 +34,7 @@ func eq(a, b []string) bool {
 // chat prompt: the agent must receive every user message since its last reply
 // (the MUL-2968 debounce can land several before one run fires), not just the
 // most recent one.
-func TestTrailingUserMessages(t *testing.T) {
+func TestTrailingPromptMessages(t *testing.T) {
 	cases := []struct {
 		name string
 		in   []db.ChatMessage
@@ -76,12 +76,34 @@ func TestTrailingUserMessages(t *testing.T) {
 			in:   []db.ChatMessage{msg("user", "hi")},
 			want: []string{"hi"},
 		},
+		{
+			// A Bot-sent notice (Lark AgentNotifier mirror) must be replayed
+			// into the prompt — the provider's resumed session has never
+			// seen it — so the agent knows what it already told the user.
+			name: "notice after last reply is replayed",
+			in: []db.ChatMessage{
+				msg("user", "建个issue"), msg("assistant", "已创建 SMO-8"),
+				msg("notice", "我创建了 SMO-8 并指派给你。"), msg("user", "你刚说了啥"),
+			},
+			want: []string{"我创建了 SMO-8 并指派给你。", "你刚说了啥"},
+		},
+		{
+			// Regression guard for the anchor bug: a notice landing AFTER a
+			// not-yet-answered user message must not advance the anchor and
+			// swallow that user message.
+			name: "notice does not swallow earlier unanswered user message",
+			in: []db.ChatMessage{
+				msg("assistant", "earlier reply"),
+				msg("user", "帮我看个东西"), msg("notice", "我创建了 SMO-9 并指派给你。"),
+			},
+			want: []string{"帮我看个东西", "我创建了 SMO-9 并指派给你。"},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := contents(trailingUserMessages(tc.in))
+			got := contents(trailingPromptMessages(tc.in))
 			if !eq(got, tc.want) {
-				t.Fatalf("trailingUserMessages = %v, want %v", got, tc.want)
+				t.Fatalf("trailingPromptMessages = %v, want %v", got, tc.want)
 			}
 		})
 	}

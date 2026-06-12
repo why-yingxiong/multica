@@ -1408,17 +1408,24 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 			// delivering just the latest message would silently drop the
 			// earlier ones (e.g. "看上海天气" then "还有青岛" → only Qingdao
 			// answered). The unanswered set is the trailing run of user
-			// messages after the last assistant message (every completed or
-			// failed run writes an assistant row, so that anchor advances each
-			// turn). Attachments are collected from each included message so
+			// and notice messages after the last assistant message (every
+			// completed or failed run writes an assistant row, so that anchor
+			// advances each turn). 'notice' rows — Bot-sent notifications the
+			// model has never generated — are replayed wrapped in a system
+			// marker so the agent knows what its Bot already told the user.
+			// Attachments are collected from each included message so
 			// the agent can `multica attachment download <id>` — the markdown
 			// URL alone is signed and 30-min expiring on the private CDN.
 			if msgs, err := h.Queries.ListChatMessages(r.Context(), cs.ID); err == nil && len(msgs) > 0 {
-				unanswered := trailingUserMessages(msgs)
+				unanswered := trailingPromptMessages(msgs)
 				parts := make([]string, 0, len(unanswered))
 				for _, m := range unanswered {
 					if strings.TrimSpace(m.Content) != "" {
-						parts = append(parts, m.Content)
+						if m.Role == "notice" {
+							parts = append(parts, noticePromptHeader+"\n"+m.Content)
+						} else {
+							parts = append(parts, m.Content)
+						}
 					}
 					if atts, attErr := h.Queries.ListAttachmentsByChatMessage(r.Context(), db.ListAttachmentsByChatMessageParams{
 						ChatMessageID: m.ID,
@@ -1695,16 +1702,27 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 // these, not just the latest. Every completed or failed run writes an
 // assistant row, so the anchor advances one turn at a time; the result is the
 // whole slice on the first turn and exactly the new message(s) thereafter.
-func trailingUserMessages(msgs []db.ChatMessage) []db.ChatMessage {
+func trailingPromptMessages(msgs []db.ChatMessage) []db.ChatMessage {
 	start := 0
 	for i := len(msgs) - 1; i >= 0; i-- {
-		if msgs[i].Role != "user" {
+		// Only a real assistant turn anchors the cut. 'notice' rows are
+		// platform-composed Bot messages (Lark AgentNotifier mirrors);
+		// they must be REPLAYED into the next prompt — the provider's
+		// resumed session has never seen them — and must not advance
+		// the anchor, or a user message that arrived just before the
+		// notice landed would be silently dropped from the prompt.
+		if msgs[i].Role == "assistant" {
 			start = i + 1
 			break
 		}
 	}
 	return msgs[start:]
 }
+
+// noticePromptHeader wraps a 'notice' chat row when it is replayed
+// inside the daemon chat prompt, so the model knows this is something
+// its Bot already told the user — context, not new user input.
+const noticePromptHeader = "[系统代发通知 — 以下内容已由你的机器人发送给用户]"
 
 // ListPendingTasksByRuntime returns queued/dispatched tasks for a runtime.
 func (h *Handler) ListPendingTasksByRuntime(w http.ResponseWriter, r *http.Request) {
