@@ -264,7 +264,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				// event carries a handler.IssueResponse, which this
 				// wiring layer flattens into plain values so the lark
 				// package stays handler-free.
-				assignmentNotifier := lark.NewAssignmentNotifier(queries, installSvc, larkClient, chatSvc, lark.AssignmentNotifierConfig{
+				agentNotifier := lark.NewAgentNotifier(queries, installSvc, larkClient, chatSvc, lark.AgentNotifierConfig{
 					PublicURL: signupConfig.PublicURL,
 					Logger:    slog.Default(),
 				})
@@ -283,13 +283,58 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					if issue.AssigneeType == nil || *issue.AssigneeType != "member" || issue.AssigneeID == nil {
 						return
 					}
-					assignmentNotifier.NotifyAssigned(lark.IssueAssignedNotice{
+					agentNotifier.NotifyAssigned(lark.IssueAssignedNotice{
 						WorkspaceID:    parseUUID(issue.WorkspaceID),
 						AgentID:        parseUUID(e.ActorID),
 						AssigneeUserID: parseUUID(*issue.AssigneeID),
 						Identifier:     issue.Identifier,
 						Title:          issue.Title,
 					})
+				})
+
+				// Mention notice: when an AGENT @-mentions members in an
+				// issue comment ("@bob 请处理回归"), each mentioned member
+				// gets the same Bot-DM + transcript-mirror treatment as an
+				// assignment. The dual payload shape mirrors
+				// notification_listeners.go: handler.CommentResponse from
+				// the HTTP path, map[string]any from the agent comment
+				// path in task.go — agents only comment through the
+				// latter, but both are handled so a future HTTP-side agent
+				// surface doesn't silently drop notices.
+				bus.Subscribe(protocol.EventCommentCreated, func(e events.Event) {
+					if e.ActorType != "agent" {
+						return
+					}
+					payload, ok := e.Payload.(map[string]any)
+					if !ok {
+						return
+					}
+					var issueID, content string
+					switch c := payload["comment"].(type) {
+					case handler.CommentResponse:
+						issueID = c.IssueID
+						content = c.Content
+					case map[string]any:
+						issueID, _ = c["issue_id"].(string)
+						content, _ = c["content"].(string)
+					default:
+						return
+					}
+					if issueID == "" || content == "" {
+						return
+					}
+					for _, m := range util.ParseMentions(content) {
+						if m.Type != "member" {
+							continue
+						}
+						agentNotifier.NotifyMentioned(lark.MentionNotice{
+							WorkspaceID:     parseUUID(e.WorkspaceID),
+							AgentID:         parseUUID(e.ActorID),
+							MentionedUserID: parseUUID(m.ID),
+							IssueID:         parseUUID(issueID),
+							CommentBody:     content,
+						})
+					}
 				})
 
 				// WS Hub: lease + supervisor goroutines per installation.
