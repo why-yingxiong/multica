@@ -57,7 +57,7 @@
     --card-foreground: oklch(0.141 0.005 285.823);
     --popover: oklch(1 0 0);
     --popover-foreground: oklch(0.141 0.005 285.823);
-    --primary: oklch(0.21 0.006 285.885);
+    --primary: oklch(0.55 0.17 28);
     --primary-foreground: oklch(0.985 0 0);
     --secondary: oklch(0.967 0.001 286.375);
     --secondary-foreground: oklch(0.21 0.006 285.885);
@@ -68,27 +68,26 @@
     --destructive: oklch(0.577 0.245 27.325);
     --border: oklch(0.92 0.004 286.32);
     --input: oklch(0.92 0.004 286.32);
-    --ring: oklch(0.705 0.015 286.067);
-    /* Brand-derived blue gradient (h=255 = brand hue). chart-1 equals brand
-       so the most important series visually anchors to the product colour;
-       chart-2..5 step lighter + less saturated so a stacked bar reads
-       "primary → secondary → tertiary" at a glance instead of fighting
-       for attention as five equally-weighted greys. */
-    --chart-1: oklch(0.55 0.16 255);
-    --chart-2: oklch(0.66 0.13 255);
-    --chart-3: oklch(0.76 0.10 255);
-    --chart-4: oklch(0.85 0.06 255);
-    --chart-5: oklch(0.92 0.03 255);
+    --ring: oklch(0.55 0.17 28);
+    /* Brand-derived red gradient (h=28 = Hero Games brand hue). chart-1
+       equals brand so the most important series visually anchors to the
+       product colour; chart-2..5 step lighter + less saturated so a
+       stacked bar reads "primary → secondary → tertiary" at a glance. */
+    --chart-1: oklch(0.55 0.17 28);
+    --chart-2: oklch(0.66 0.13 28);
+    --chart-3: oklch(0.76 0.10 28);
+    --chart-4: oklch(0.85 0.06 28);
+    --chart-5: oklch(0.92 0.03 28);
     --radius: 0.625rem;
     --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: oklch(0.141 0.005 285.823);
-    --sidebar-primary: oklch(0.21 0.006 285.885);
+    --sidebar-primary: oklch(0.55 0.17 28);
     --sidebar-primary-foreground: oklch(0.985 0 0);
     --sidebar-accent: oklch(0.95 0.002 286.375);
     --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
     --sidebar-border: oklch(0.92 0.004 286.32);
     --sidebar-ring: oklch(0.705 0.015 286.067);
-    --brand: oklch(0.55 0.16 255);
+    --brand: oklch(0.55 0.17 28);
     --brand-foreground: oklch(0.985 0 0);
     --success: oklch(0.55 0.16 145);
     --warning: oklch(0.75 0.16 85);
@@ -105,8 +104,8 @@
     --card-foreground: oklch(0.985 0 0);
     --popover: oklch(0.21 0.006 285.885);
     --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.92 0.004 286.32);
-    --primary-foreground: oklch(0.21 0.006 285.885);
+    --primary: oklch(0.62 0.17 28);
+    --primary-foreground: oklch(0.985 0 0);
     --secondary: oklch(0.274 0.006 286.033);
     --secondary-foreground: oklch(0.985 0 0);
     --muted: oklch(0.274 0.006 286.033);
@@ -116,25 +115,25 @@
     --destructive: oklch(0.704 0.191 22.216);
     --border: oklch(1 0 0 / 10%);
     --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.552 0.016 285.938);
+    --ring: oklch(0.62 0.17 28);
     /* Dark mode mirrors light mode's "primary → secondary" gradient on the
        brand hue, but flips the lightness curve: the most important series
        is the brightest (so it pops on the dark background) and trailing
        series get progressively darker / less saturated. */
-    --chart-1: oklch(0.72 0.16 255);
-    --chart-2: oklch(0.62 0.13 255);
-    --chart-3: oklch(0.52 0.10 255);
-    --chart-4: oklch(0.42 0.06 255);
-    --chart-5: oklch(0.32 0.03 255);
+    --chart-1: oklch(0.72 0.16 28);
+    --chart-2: oklch(0.62 0.13 28);
+    --chart-3: oklch(0.52 0.10 28);
+    --chart-4: oklch(0.42 0.06 28);
+    --chart-5: oklch(0.32 0.03 28);
     --sidebar: oklch(0.21 0.006 285.885);
     --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
+    --sidebar-primary: oklch(0.62 0.17 28);
     --sidebar-primary-foreground: oklch(0.985 0 0);
     --sidebar-accent: oklch(0.274 0.006 286.033);
     --sidebar-accent-foreground: oklch(0.985 0 0);
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.552 0.016 285.938);
-    --brand: oklch(0.65 0.16 255);
+    --brand: oklch(0.65 0.16 28);
     --brand-foreground: oklch(0.985 0 0);
     --success: oklch(0.65 0.15 145);
     --warning: oklch(0.70 0.16 85);
