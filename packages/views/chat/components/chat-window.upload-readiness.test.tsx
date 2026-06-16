@@ -328,7 +328,7 @@ describe("ChatWindow upload readiness", () => {
     expect(await screen.findByTestId("mock-chat-upload")).toBeDisabled();
 
     mocks.queryState.agents = [
-      makeAgent({ id: "agent-1", name: "Multica", owner_id: "user-1" }),
+      makeAgent({ id: "agent-1", name: "HeroGameStudio", owner_id: "user-1" }),
     ];
     mocks.queryState.availability = "available";
     view.rerender(
